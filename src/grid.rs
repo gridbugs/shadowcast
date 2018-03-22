@@ -1,6 +1,6 @@
 use num::traits::Zero;
-use grid_2d::{Coord, Size};
-use direction::DirectionBitmap;
+use super::{Coord, Size};
+use super::DirectionBitmap;
 
 pub trait OutputGrid {
     fn see(&mut self, coord: Coord, bitmap: DirectionBitmap, time: u64);

@@ -1,7 +1,7 @@
 [package]
 name = "shadowcast"
 description = "Implementation of the recursive shadowcast visible-area detection algorithm"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Stephen Sherratt <sfsherratt@gmail.com>"]
 license = "MIT"
 documentation = "https://docs.rs/shadowcast"
@@ -10,6 +10,6 @@ homepage = "https://github.com/stevebob/shadowcast.git"
 readme = "README.md"
 
 [dependencies]
-direction = "0.14"
-grid_2d = "0.7"
+direction = "0.15"
+grid_2d = "0.8"
 num = { version = "0.1", default-features = false }

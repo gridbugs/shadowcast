@@ -1,8 +1,8 @@
 use std::mem;
 use std::cmp;
 use num::traits::Zero;
-use grid_2d::Coord;
-use direction::DirectionBitmap;
+use super::Coord;
+use super::DirectionBitmap;
 use grid::*;
 use shadowcast_octants::*;
 
