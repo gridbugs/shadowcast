@@ -22,7 +22,6 @@ impl Gradient {
 struct StaticParams<'a, In: 'a + InputGrid> {
     centre: Coord,
     vision_distance_squared: i32,
-    time: u64,
     input_grid: &'a In,
     width: i32,
     height: i32,
@@ -52,15 +51,15 @@ struct CornerInfo {
     coord: Coord,
 }
 
-fn scan<Out, In, O>(
-    output_grid: &mut Out,
+fn scan<In, O, F>(
     octant: &O,
     next: &mut Vec<ScanParams<In::Visibility>>,
     params: ScanParams<In::Visibility>,
     static_params: &StaticParams<In>,
+    f: &mut F,
 ) -> Option<CornerInfo>
 where
-    Out: OutputGrid,
+    F: FnMut(Coord, DirectionBitmap),
     In: InputGrid,
     O: Octant,
     In::Visibility: Copy
@@ -101,6 +100,8 @@ where
 
     let mut prev_visibility = Zero::zero();
     let mut prev_opaque = false;
+
+    println!("{:?} {:?}", lateral_min, lateral_max);
 
     for lateral_index in lateral_min..(lateral_max + 1) {
         let coord = octant.make_coord(static_params.centre, lateral_index, depth_index);
@@ -189,7 +190,7 @@ where
         }
 
         if in_range && octant.should_see(lateral_index) {
-            output_grid.see(coord, direction_bitmap, static_params.time);
+            f(coord, direction_bitmap);
         }
 
         prev_visibility = cur_visibility;
@@ -217,16 +218,17 @@ impl<Visibility> ShadowcastContext<Visibility> {
         }
     }
 
-    fn observe_octant<Out, In, A, B>(
+    fn observe_octant<In, A, B, F>(
         &mut self,
-        output_grid: &mut Out,
         octant_a: A,
         octant_b: B,
         static_params: &StaticParams<In>,
+        f: &mut F,
     ) where
-        Out: OutputGrid,
+        F: FnMut(Coord, DirectionBitmap),
         In: InputGrid<Visibility = Visibility>,
         In::Visibility: Copy
+            + ::std::fmt::Debug
             + Zero
             + PartialOrd<In::Opacity>
             + PartialOrd<In::Visibility>
@@ -243,29 +245,25 @@ impl<Visibility> ShadowcastContext<Visibility> {
             let mut corner_bitmap = DirectionBitmap::empty();
             let mut corner_coord = None;
 
-            while let Some(params) = self.queue_a.pop() {
-                if let Some(corner) = scan(
-                    output_grid,
-                    &octant_a,
-                    &mut self.queue_a_swap,
-                    params,
-                    static_params,
-                ) {
+            println!("\n\n#### DEPTH {}\n", self.queue_a[0].depth);
+
+            for params in self.queue_a.drain(..) {
+                println!("  {:#?}", params);
+                if let Some(corner) =
+                    scan(&octant_a, &mut self.queue_a_swap, params, static_params, f)
+                {
                     corner_bitmap |= corner.bitmap;
                     corner_coord = Some(corner.coord);
                 }
             }
 
-            while let Some(params) = self.queue_b.pop() {
-                if let Some(corner) = scan(
-                    output_grid,
-                    &octant_b,
-                    &mut self.queue_b_swap,
-                    params,
-                    static_params,
-                ) {
+            for params in self.queue_b.drain(..) {
+                /*
+                if let Some(corner) =
+                    scan(&octant_b, &mut self.queue_b_swap, params, static_params, f)
+                {
                     corner_bitmap |= corner.bitmap;
-                }
+                } */
             }
 
             if let Some(corner_coord) = corner_coord {
@@ -276,7 +274,7 @@ impl<Visibility> ShadowcastContext<Visibility> {
                     // the entire edge, just keep the edge.
                     corner_bitmap &= DirectionBitmap::all_cardinal();
                 }
-                output_grid.see(corner_coord, corner_bitmap, static_params.time);
+                f(corner_coord, corner_bitmap);
             }
 
             if self.queue_a_swap.is_empty() && self.queue_b_swap.is_empty() {
@@ -285,6 +283,45 @@ impl<Visibility> ShadowcastContext<Visibility> {
             mem::swap(&mut self.queue_a, &mut self.queue_a_swap);
             mem::swap(&mut self.queue_b, &mut self.queue_b_swap);
         }
+    }
+
+    pub fn for_each<F, In>(&mut self, coord: Coord, input_grid: &In, distance: u32, mut f: F)
+    where
+        In: InputGrid<Visibility = Visibility>,
+        In::Visibility: Copy
+            + ::std::fmt::Debug
+            + Zero
+            + PartialOrd<In::Opacity>
+            + PartialOrd<In::Visibility>
+            + Sub<In::Opacity, Output = In::Visibility>,
+        F: FnMut(Coord, DirectionBitmap),
+    {
+        f(coord, DirectionBitmap::all());
+        let size = input_grid.size();
+        let width = size.x() as i32;
+        let height = size.y() as i32;
+        let params = StaticParams {
+            centre: coord,
+            vision_distance_squared: (distance * distance) as i32,
+            input_grid,
+            width,
+            height,
+        };
+        /*
+        self.observe_octant(TopLeft, LeftTop, &params, &mut f);
+        self.observe_octant(TopRight { width }, RightTop { width }, &params, &mut f);
+        self.observe_octant(
+            BottomLeft { height },
+            LeftBottom { height },
+            &params,
+            &mut f,
+        ); */
+        self.observe_octant(
+            BottomRight { width, height },
+            RightBottom { width, height },
+            &params,
+            &mut f,
+        );
     }
 
     pub fn observe<Out, In>(
@@ -298,38 +335,14 @@ impl<Visibility> ShadowcastContext<Visibility> {
         Out: OutputGrid,
         In: InputGrid<Visibility = Visibility>,
         In::Visibility: Copy
+            + ::std::fmt::Debug
             + Zero
             + PartialOrd<In::Opacity>
             + PartialOrd<In::Visibility>
             + Sub<In::Opacity, Output = In::Visibility>,
     {
-        output_grid.see(coord, DirectionBitmap::all(), time);
-
-        let size = input_grid.size();
-        let width = size.x() as i32;
-        let height = size.y() as i32;
-
-        let params = StaticParams {
-            centre: coord,
-            vision_distance_squared: (distance * distance) as i32,
-            time,
-            input_grid,
-            width,
-            height,
-        };
-        self.observe_octant(output_grid, TopLeft, LeftTop, &params);
-        self.observe_octant(output_grid, TopRight { width }, RightTop { width }, &params);
-        self.observe_octant(
-            output_grid,
-            BottomLeft { height },
-            LeftBottom { height },
-            &params,
-        );
-        self.observe_octant(
-            output_grid,
-            BottomRight { width, height },
-            RightBottom { width, height },
-            &params,
-        );
+        self.for_each(coord, input_grid, distance, |coord, direction_map| {
+            output_grid.see(coord, direction_map, time);
+        });
     }
 }
