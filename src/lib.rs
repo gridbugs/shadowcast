@@ -1,13 +1,13 @@
-pub extern crate direction;
-extern crate grid_2d;
-extern crate num;
+extern crate coord_2d;
+extern crate direction;
+extern crate num_traits;
 
 mod grid;
 mod shadowcast;
 mod shadowcast_octants;
 
-pub use shadowcast::*;
 pub use grid::*;
+pub use shadowcast::*;
 
-pub use grid_2d::{Coord, Size};
-pub use direction::DirectionBitmap;
+#[cfg(test)]
+mod test;

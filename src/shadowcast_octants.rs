@@ -1,4 +1,4 @@
-use grid_2d::Coord;
+use coord_2d::Coord;
 use direction::{Direction, DirectionBitmap};
 
 pub trait Octant {
@@ -41,7 +41,7 @@ macro_rules! some_if {
         } else {
             None
         }
-    }
+    };
 }
 
 macro_rules! see_ahead {

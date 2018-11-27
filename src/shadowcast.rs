@@ -1,10 +1,11 @@
-use std::mem;
-use std::cmp;
-use num::traits::Zero;
-use super::Coord;
-use super::DirectionBitmap;
+use coord_2d::Coord;
+use direction::DirectionBitmap;
 use grid::*;
+use num_traits::Zero;
 use shadowcast_octants::*;
+use std::cmp;
+use std::mem;
+use std::ops::Sub;
 
 #[derive(Debug, Clone, Copy)]
 struct Gradient {
@@ -66,7 +67,7 @@ where
         + Zero
         + PartialOrd<In::Opacity>
         + PartialOrd<In::Visibility>
-        + ::std::ops::Sub<In::Opacity, Output = In::Visibility>,
+        + Sub<In::Opacity, Output = In::Visibility>,
 {
     let ScanParams {
         mut min_gradient,
@@ -78,6 +79,7 @@ where
     let depth_index = if let Some(depth_index) = octant.depth_index(static_params.centre, depth) {
         depth_index
     } else {
+        // depth puts this strip out of bounds within the current octant
         return None;
     };
 
@@ -128,17 +130,6 @@ where
             (Zero::zero(), true)
         };
 
-        if cur_opaque {
-            // check if we can actually see the facing side
-            if max_gradient.lateral * front_gradient_depth > gradient_lateral * max_gradient.depth {
-                direction_bitmap |= octant.facing_bitmap();
-            } else {
-                direction_bitmap |= octant.facing_corner_bitmap();
-            }
-        } else {
-            direction_bitmap |= DirectionBitmap::all();
-        };
-
         // handle changes in opacity
         if lateral_index != lateral_min && cur_visibility != prev_visibility {
             // use the back of the cell if necessary
@@ -160,11 +151,23 @@ where
             }
 
             min_gradient = gradient;
-            if cur_opaque {
-                // the edge of the current cell is visible through the previous cell
-                direction_bitmap |= octant.across_bitmap();
-            }
+            // If the current cell is opaque, then the previous cell was not opaque and so
+            // we can see the across edge through the previous cell.
+            // If the current cell is transparent, we can see the entire cell (including
+            // the across edge), so setting it again here doesn't hurt.
+            direction_bitmap |= octant.across_bitmap();
         }
+        if cur_opaque {
+            // check if we can actually see the facing side
+            if max_gradient.lateral * front_gradient_depth > gradient_lateral * max_gradient.depth {
+                direction_bitmap |= octant.facing_bitmap();
+            } else if direction_bitmap.is_empty() {
+                // only set the corner as visible if no edge is already visible
+                direction_bitmap |= octant.facing_corner_bitmap();
+            }
+        } else {
+            direction_bitmap |= DirectionBitmap::all();
+        };
 
         // handle final cell
         if lateral_index == lateral_max {
@@ -227,7 +230,7 @@ impl<Visibility> ShadowcastContext<Visibility> {
             + Zero
             + PartialOrd<In::Opacity>
             + PartialOrd<In::Visibility>
-            + ::std::ops::Sub<In::Opacity, Output = In::Visibility>,
+            + Sub<In::Opacity, Output = In::Visibility>,
         A: Octant,
         B: Octant,
     {
@@ -266,6 +269,13 @@ impl<Visibility> ShadowcastContext<Visibility> {
             }
 
             if let Some(corner_coord) = corner_coord {
+                if !(corner_bitmap.is_full()
+                    || (corner_bitmap & DirectionBitmap::all_cardinal()).is_empty())
+                {
+                    // if one of the scans saw a corner only but the other saw
+                    // the entire edge, just keep the edge.
+                    corner_bitmap &= DirectionBitmap::all_cardinal();
+                }
                 output_grid.see(corner_coord, corner_bitmap, static_params.time);
             }
 
@@ -291,7 +301,7 @@ impl<Visibility> ShadowcastContext<Visibility> {
             + Zero
             + PartialOrd<In::Opacity>
             + PartialOrd<In::Visibility>
-            + ::std::ops::Sub<In::Opacity, Output = In::Visibility>,
+            + Sub<In::Opacity, Output = In::Visibility>,
     {
         output_grid.see(coord, DirectionBitmap::all(), time);
 
@@ -307,7 +317,6 @@ impl<Visibility> ShadowcastContext<Visibility> {
             width,
             height,
         };
-
         self.observe_octant(output_grid, TopLeft, LeftTop, &params);
         self.observe_octant(output_grid, TopRight { width }, RightTop { width }, &params);
         self.observe_octant(
