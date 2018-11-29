@@ -31,15 +31,19 @@ struct StaticParams<'a, In: 'a + InputGrid> {
 struct ScanParams<Visibility> {
     min_gradient: Gradient,
     max_gradient: Gradient,
+    min_inclusive: bool,
+    max_inclusive: bool,
     depth: i32,
     visibility: Visibility,
 }
 
 impl<Visibility> ScanParams<Visibility> {
-    fn with_visibility(visibility: Visibility) -> Self {
+    fn octant_base(visibility: Visibility, min_inclusive: bool, max_inclusive: bool) -> Self {
         Self {
             min_gradient: Gradient::new(0, 1),
             max_gradient: Gradient::new(1, 1),
+            min_inclusive,
+            max_inclusive,
             depth: 1,
             visibility,
         }
@@ -71,6 +75,8 @@ where
     let ScanParams {
         mut min_gradient,
         max_gradient,
+        mut min_inclusive,
+        max_inclusive,
         depth,
         visibility,
     } = params;
@@ -101,7 +107,10 @@ where
     let mut prev_visibility = Zero::zero();
     let mut prev_opaque = false;
 
-    println!("{:?} {:?}", lateral_min, lateral_max);
+    println!(
+        "{:?} {}     {:?} {}",
+        lateral_min, min_inclusive, lateral_max, max_inclusive
+    );
 
     for lateral_index in lateral_min..(lateral_max + 1) {
         let coord = octant.make_coord(static_params.centre, lateral_index, depth_index);
@@ -133,25 +142,27 @@ where
 
         // handle changes in opacity
         if lateral_index != lateral_min && cur_visibility != prev_visibility {
-            // use the back of the cell if necessary
-            let gradient_depth = if cur_visibility < prev_visibility {
-                back_gradient_depth
+            let (gradient_depth, inclusive) = if cur_visibility < prev_visibility {
+                // getting more opaque
+                (back_gradient_depth, false)
             } else {
-                front_gradient_depth
+                // getting less opaque
+                (front_gradient_depth, true)
             };
             let gradient = Gradient::new(gradient_lateral, gradient_depth);
-
             if !prev_opaque && in_range {
                 // see beyond the previous section unless it's opaque
                 next.push(ScanParams {
                     min_gradient,
                     max_gradient: gradient,
+                    min_inclusive,
+                    max_inclusive: inclusive,
                     depth: depth + 1,
                     visibility: prev_visibility,
                 });
             }
-
             min_gradient = gradient;
+            min_inclusive = !inclusive;
             // If the current cell is opaque, then the previous cell was not opaque and so
             // we can see the across edge through the previous cell.
             // If the current cell is transparent, we can see the entire cell (including
@@ -177,6 +188,8 @@ where
                 next.push(ScanParams {
                     min_gradient,
                     max_gradient,
+                    min_inclusive,
+                    max_inclusive,
                     depth: depth + 1,
                     visibility: cur_visibility,
                 });
@@ -236,10 +249,18 @@ impl<Visibility> ShadowcastContext<Visibility> {
         A: Octant,
         B: Octant,
     {
-        self.queue_a
-            .push(ScanParams::with_visibility(In::initial_visibility()));
-        self.queue_b
-            .push(ScanParams::with_visibility(In::initial_visibility()));
+        //TODO it should be possbile to encode in min_inclusive and max_inclusive
+        // whether an octant can "see ahead", removing the need for Octant::should_see
+        self.queue_a.push(ScanParams::octant_base(
+            In::initial_visibility(),
+            true,
+            true,
+        ));
+        self.queue_b.push(ScanParams::octant_base(
+            In::initial_visibility(),
+            true,
+            true,
+        ));
 
         loop {
             let mut corner_bitmap = DirectionBitmap::empty();
