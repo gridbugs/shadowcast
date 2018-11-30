@@ -13,6 +13,12 @@ struct Gradient {
     depth: i32,
 }
 
+impl PartialEq for Gradient {
+    fn eq(&self, other: &Self) -> bool {
+        self.lateral * other.depth == self.depth * other.lateral
+    }
+}
+
 impl Gradient {
     fn new(lateral: i32, depth: i32) -> Self {
         Self { lateral, depth }
@@ -32,18 +38,16 @@ struct ScanParams<Visibility> {
     min_gradient: Gradient,
     max_gradient: Gradient,
     min_inclusive: bool,
-    max_inclusive: bool,
     depth: i32,
     visibility: Visibility,
 }
 
 impl<Visibility> ScanParams<Visibility> {
-    fn octant_base(visibility: Visibility, min_inclusive: bool, max_inclusive: bool) -> Self {
+    fn octant_base(visibility: Visibility) -> Self {
         Self {
             min_gradient: Gradient::new(0, 1),
             max_gradient: Gradient::new(1, 1),
-            min_inclusive,
-            max_inclusive,
+            min_inclusive: true,
             depth: 1,
             visibility,
         }
@@ -76,7 +80,6 @@ where
         mut min_gradient,
         max_gradient,
         mut min_inclusive,
-        max_inclusive,
         depth,
         visibility,
     } = params;
@@ -94,23 +97,19 @@ where
     let double_start_num = min_gradient.depth + front_gradient_depth * min_gradient.lateral;
     let double_stop_num = max_gradient.depth + back_gradient_depth * max_gradient.lateral;
 
-    let lateral_min = double_start_num / (2 * min_gradient.depth);
+    let start_denom = 2 * min_gradient.depth;
+    let lateral_min = (double_start_num / start_denom) + ((!min_inclusive) as i32);
 
     let stop_denom = 2 * max_gradient.depth;
     let lateral_max = if double_stop_num % stop_denom == 0 {
         (double_stop_num - 1) / stop_denom
     } else {
-        double_stop_num / stop_denom
+        (double_stop_num / stop_denom)
     };
     let lateral_max = cmp::min(lateral_max, octant.lateral_max(static_params.centre));
 
     let mut prev_visibility = Zero::zero();
     let mut prev_opaque = false;
-
-    println!(
-        "{:?} {}     {:?} {}",
-        lateral_min, min_inclusive, lateral_max, max_inclusive
-    );
 
     for lateral_index in lateral_min..(lateral_max + 1) {
         let coord = octant.make_coord(static_params.centre, lateral_index, depth_index);
@@ -142,12 +141,12 @@ where
 
         // handle changes in opacity
         if lateral_index != lateral_min && cur_visibility != prev_visibility {
-            let (gradient_depth, inclusive) = if cur_visibility < prev_visibility {
+            let gradient_depth = if cur_visibility < prev_visibility {
                 // getting more opaque
-                (back_gradient_depth, false)
+                back_gradient_depth
             } else {
                 // getting less opaque
-                (front_gradient_depth, true)
+                front_gradient_depth
             };
             let gradient = Gradient::new(gradient_lateral, gradient_depth);
             if !prev_opaque && in_range {
@@ -156,13 +155,12 @@ where
                     min_gradient,
                     max_gradient: gradient,
                     min_inclusive,
-                    max_inclusive: inclusive,
                     depth: depth + 1,
                     visibility: prev_visibility,
                 });
             }
             min_gradient = gradient;
-            min_inclusive = !inclusive;
+            min_inclusive = false;
             // If the current cell is opaque, then the previous cell was not opaque and so
             // we can see the across edge through the previous cell.
             // If the current cell is transparent, we can see the entire cell (including
@@ -183,18 +181,22 @@ where
 
         // handle final cell
         if lateral_index == lateral_max {
-            if !cur_opaque && in_range {
+            if !cur_opaque && in_range && min_gradient != max_gradient {
                 // see beyond the current section
                 next.push(ScanParams {
                     min_gradient,
                     max_gradient,
                     min_inclusive,
-                    max_inclusive,
                     depth: depth + 1,
                     visibility: cur_visibility,
                 });
             }
             if in_range && lateral_index == depth {
+                // Intentionally don't invoke the callback on the final cell of
+                // the scan, if it's along the diagonal between two octants.
+                // The result of both octant scans is required to determine the
+                // visibility of this cell. It is handled in
+                // ShadowcastContext::observe_octant.
                 return Some(CornerInfo {
                     bitmap: direction_bitmap,
                     coord,
@@ -241,7 +243,6 @@ impl<Visibility> ShadowcastContext<Visibility> {
         F: FnMut(Coord, DirectionBitmap),
         In: InputGrid<Visibility = Visibility>,
         In::Visibility: Copy
-            + ::std::fmt::Debug
             + Zero
             + PartialOrd<In::Opacity>
             + PartialOrd<In::Visibility>
@@ -249,27 +250,16 @@ impl<Visibility> ShadowcastContext<Visibility> {
         A: Octant,
         B: Octant,
     {
-        //TODO it should be possbile to encode in min_inclusive and max_inclusive
-        // whether an octant can "see ahead", removing the need for Octant::should_see
-        self.queue_a.push(ScanParams::octant_base(
-            In::initial_visibility(),
-            true,
-            true,
-        ));
-        self.queue_b.push(ScanParams::octant_base(
-            In::initial_visibility(),
-            true,
-            true,
-        ));
+        self.queue_a
+            .push(ScanParams::octant_base(In::initial_visibility()));
+        self.queue_b
+            .push(ScanParams::octant_base(In::initial_visibility()));
 
         loop {
             let mut corner_bitmap = DirectionBitmap::empty();
             let mut corner_coord = None;
 
-            println!("\n\n#### DEPTH {}\n", self.queue_a[0].depth);
-
             for params in self.queue_a.drain(..) {
-                println!("  {:#?}", params);
                 if let Some(corner) =
                     scan(&octant_a, &mut self.queue_a_swap, params, static_params, f)
                 {
@@ -279,12 +269,12 @@ impl<Visibility> ShadowcastContext<Visibility> {
             }
 
             for params in self.queue_b.drain(..) {
-                /*
                 if let Some(corner) =
                     scan(&octant_b, &mut self.queue_b_swap, params, static_params, f)
                 {
                     corner_bitmap |= corner.bitmap;
-                } */
+                    corner_coord = Some(corner.coord);
+                }
             }
 
             if let Some(corner_coord) = corner_coord {
@@ -310,7 +300,6 @@ impl<Visibility> ShadowcastContext<Visibility> {
     where
         In: InputGrid<Visibility = Visibility>,
         In::Visibility: Copy
-            + ::std::fmt::Debug
             + Zero
             + PartialOrd<In::Opacity>
             + PartialOrd<In::Visibility>
@@ -328,7 +317,6 @@ impl<Visibility> ShadowcastContext<Visibility> {
             width,
             height,
         };
-        /*
         self.observe_octant(TopLeft, LeftTop, &params, &mut f);
         self.observe_octant(TopRight { width }, RightTop { width }, &params, &mut f);
         self.observe_octant(
@@ -336,7 +324,7 @@ impl<Visibility> ShadowcastContext<Visibility> {
             LeftBottom { height },
             &params,
             &mut f,
-        ); */
+        );
         self.observe_octant(
             BottomRight { width, height },
             RightBottom { width, height },
@@ -356,7 +344,6 @@ impl<Visibility> ShadowcastContext<Visibility> {
         Out: OutputGrid,
         In: InputGrid<Visibility = Visibility>,
         In::Visibility: Copy
-            + ::std::fmt::Debug
             + Zero
             + PartialOrd<In::Opacity>
             + PartialOrd<In::Visibility>
