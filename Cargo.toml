@@ -10,6 +10,6 @@ homepage = "https://github.com/stevebob/shadowcast.git"
 readme = "README.md"
 
 [dependencies]
-direction = { path = "/home/steve/src/direction" }
-coord_2d = { path = "/home/steve/src/coord-2d" }
+direction = "0.17"
+coord_2d = "0.2"
 num-traits = { version = "0.2", default-features = false }
