@@ -71,6 +71,7 @@ where
     In: InputGrid,
     O: Octant,
     In::Visibility: Copy
+        + ::std::fmt::Debug
         + Zero
         + PartialOrd<In::Opacity>
         + PartialOrd<In::Visibility>
@@ -84,28 +85,63 @@ where
         visibility,
     } = params;
 
-    let depth_index = if let Some(depth_index) = octant.depth_index(static_params.centre, depth) {
-        depth_index
-    } else {
-        // depth puts this strip out of bounds within the current octant
-        return None;
+    let depth_index =
+        if let Some(depth_index) = octant.depth_index(static_params.centre, depth) {
+            depth_index
+        } else {
+            // depth puts this strip out of bounds within the current octant
+            return None;
+        };
+
+    // the distance in half-cells between the centre of the row being scanned
+    // and the centre of the eye
+    let mid_gradient_depth = depth * 2;
+    let front_gradient_depth = mid_gradient_depth - 1;
+    let back_gradient_depth = mid_gradient_depth + 1;
+
+    let effective_gradient_depth = mid_gradient_depth;
+
+    let lateral_min = {
+        // We're interested in the width in half-cells of the right triangle which is similar to
+        // min_gradient, and whose depth is effective_gradient_depth. Since the eye is in the centre of a
+        // cell, the lateral min index will be half of (this width + 1).
+        // It's incremented to account for the eye being in the centre of its cell (ie. 1 half-cell
+        // to the right of the left edge of the cell.
+        // It's halved because the computed width will be in half-cells.
+        //
+        // Similar triangles:
+        // width_half_cells / effective_gradient_depth = min_gradient.lateral / min_gradient.depth
+        //
+        // Thus:
+        // width_half_cells = (min_gradient.lateral * effective_gradient_depth) / min_gradient.depth
+        //
+        // Since the eye is in the centre of a cell:
+        // offset_half_cells = 1 + width_half_cells
+        //                   = 1 + ((min_gradient.lateral * effective_gradient_depth) / min_gradient.depth)
+        //                   = (min_gradient_depth + (min_gradient.lateral * effectivte_gradient_depth)) /
+        //                     min_gradient.depth
+        //
+        // So the offset in cells is:
+        // offset_cells = offset_half_cells / 2
+        //              = (min_gradient_depth + (min_gradient.lateral * effective_gradient_depth)) /
+        //                (min_gradient.depth * 2)
+        //
+        // Finally, if this section is not min_inclusive, we skip the first index, increment
+        // the result by 1.
+        ((min_gradient.depth + (min_gradient.lateral * effective_gradient_depth))
+            / (min_gradient.depth * 2)) + ((!min_inclusive) as i32)
     };
 
-    let front_gradient_depth = depth * 2 - 1;
-    let back_gradient_depth = front_gradient_depth + 2;
-
-    let double_start_num = min_gradient.depth + front_gradient_depth * min_gradient.lateral;
-    let double_stop_num = max_gradient.depth + back_gradient_depth * max_gradient.lateral;
-
-    let start_denom = 2 * min_gradient.depth;
-    let lateral_min = (double_start_num / start_denom) + ((!min_inclusive) as i32);
-
-    let stop_denom = 2 * max_gradient.depth;
-    let lateral_max = if double_stop_num % stop_denom == 0 {
-        (double_stop_num - 1) / stop_denom
-    } else {
-        (double_stop_num / stop_denom)
+    let lateral_max = {
+        // This computation is much the same as for lateral_min above. Notable differences:
+        // - subtract 1 before dividing, to make sure that if the strip ends exactly on a left
+        //   corner of a cell, that cell is not included in the scanned range
+        // - there is no max_inclusive analog of min_inclusive. All ranges are effectively
+        //   max inclusive, so there is no need to change the result accordingly
+        (max_gradient.depth + (max_gradient.lateral * effective_gradient_depth) - 1)
+            / (max_gradient.depth * 2)
     };
+
     let lateral_max = cmp::min(lateral_max, octant.lateral_max(static_params.centre));
 
     let mut prev_visibility = Zero::zero();
@@ -169,7 +205,9 @@ where
         }
         if cur_opaque {
             // check if we can actually see the facing side
-            if max_gradient.lateral * front_gradient_depth > gradient_lateral * max_gradient.depth {
+            if max_gradient.lateral * front_gradient_depth
+                > gradient_lateral * max_gradient.depth
+            {
                 direction_bitmap |= octant.facing_bitmap();
             } else if direction_bitmap.is_empty() {
                 // only set the corner as visible if no edge is already visible
@@ -243,6 +281,7 @@ impl<Visibility> ShadowcastContext<Visibility> {
         F: FnMut(Coord, DirectionBitmap),
         In: InputGrid<Visibility = Visibility>,
         In::Visibility: Copy
+            + ::std::fmt::Debug
             + Zero
             + PartialOrd<In::Opacity>
             + PartialOrd<In::Visibility>
@@ -260,18 +299,26 @@ impl<Visibility> ShadowcastContext<Visibility> {
             let mut corner_coord = None;
 
             for params in self.queue_a.drain(..) {
-                if let Some(corner) =
-                    scan(&octant_a, &mut self.queue_a_swap, params, static_params, f)
-                {
+                if let Some(corner) = scan(
+                    &octant_a,
+                    &mut self.queue_a_swap,
+                    params,
+                    static_params,
+                    f,
+                ) {
                     corner_bitmap |= corner.bitmap;
                     corner_coord = Some(corner.coord);
                 }
             }
 
             for params in self.queue_b.drain(..) {
-                if let Some(corner) =
-                    scan(&octant_b, &mut self.queue_b_swap, params, static_params, f)
-                {
+                if let Some(corner) = scan(
+                    &octant_b,
+                    &mut self.queue_b_swap,
+                    params,
+                    static_params,
+                    f,
+                ) {
                     corner_bitmap |= corner.bitmap;
                     corner_coord = Some(corner.coord);
                 }
@@ -296,10 +343,16 @@ impl<Visibility> ShadowcastContext<Visibility> {
         }
     }
 
-    pub fn for_each<F, In>(&mut self, coord: Coord, input_grid: &In, distance: u32, mut f: F)
-    where
+    pub fn for_each<F, In>(
+        &mut self,
+        coord: Coord,
+        input_grid: &In,
+        distance: u32,
+        mut f: F,
+    ) where
         In: InputGrid<Visibility = Visibility>,
         In::Visibility: Copy
+            + ::std::fmt::Debug
             + Zero
             + PartialOrd<In::Opacity>
             + PartialOrd<In::Visibility>
@@ -318,7 +371,12 @@ impl<Visibility> ShadowcastContext<Visibility> {
             height,
         };
         self.observe_octant(TopLeft, LeftTop, &params, &mut f);
-        self.observe_octant(TopRight { width }, RightTop { width }, &params, &mut f);
+        self.observe_octant(
+            TopRight { width },
+            RightTop { width },
+            &params,
+            &mut f,
+        );
         self.observe_octant(
             BottomLeft { height },
             LeftBottom { height },
@@ -344,6 +402,7 @@ impl<Visibility> ShadowcastContext<Visibility> {
         Out: OutputGrid,
         In: InputGrid<Visibility = Visibility>,
         In::Visibility: Copy
+            + ::std::fmt::Debug
             + Zero
             + PartialOrd<In::Opacity>
             + PartialOrd<In::Visibility>
