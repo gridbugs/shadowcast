@@ -1,11 +1,26 @@
-use coord_2d::Coord;
+use coord_2d::{Coord, Size};
 use direction::DirectionBitmap;
-use grid::*;
 use num_traits::Zero;
-use shadowcast_octants::*;
+use octants::*;
 use std::cmp;
 use std::mem;
 use std::ops::Sub;
+
+pub trait InputGrid {
+    /// Representation of the opacity of a cell in the grid.
+    /// This will usually be a numeric type.
+    type Opacity;
+
+    /// Returns the size of the grid in cells.
+    fn size(&self) -> Size;
+
+    /// Returns the opacity at a given coordinate, or None if the coordinate
+    /// is out of the bounds of the grid. This method is allowed to panic if
+    /// the coord lies out of the bounds described by `size`. The contract
+    /// implemented by `ShadowcastContext::for_each` includes not calling
+    /// this with an out-of-bounds coordinate.
+    fn get_opacity(&self, coord: Coord) -> Self::Opacity;
+}
 
 #[derive(Debug, Clone, Copy)]
 struct Gradient {
@@ -25,12 +40,13 @@ impl Gradient {
     }
 }
 
-struct StaticParams<'a, In: 'a + InputGrid> {
+struct StaticParams<'a, In: 'a + InputGrid, Visibility> {
     centre: Coord,
     vision_distance_squared: i32,
     input_grid: &'a In,
     width: i32,
     height: i32,
+    initial_visibility: Visibility,
 }
 
 #[derive(Clone, Debug)]
@@ -54,28 +70,28 @@ impl<Visibility> ScanParams<Visibility> {
     }
 }
 
-struct CornerInfo {
+struct CornerInfo<Visibility> {
     bitmap: DirectionBitmap,
     coord: Coord,
+    visibility: Visibility,
 }
 
-fn scan<In, O, F>(
+fn scan<In, Visibility, O, F>(
     octant: &O,
-    next: &mut Vec<ScanParams<In::Visibility>>,
-    params: ScanParams<In::Visibility>,
-    static_params: &StaticParams<In>,
+    next: &mut Vec<ScanParams<Visibility>>,
+    params: ScanParams<Visibility>,
+    static_params: &StaticParams<In, Visibility>,
     f: &mut F,
-) -> Option<CornerInfo>
+) -> Option<CornerInfo<Visibility>>
 where
-    F: FnMut(Coord, DirectionBitmap),
+    F: FnMut(Coord, DirectionBitmap, Visibility),
     In: InputGrid,
     O: Octant,
-    In::Visibility: Copy
-        + ::std::fmt::Debug
+    Visibility: Copy
         + Zero
         + PartialOrd<In::Opacity>
-        + PartialOrd<In::Visibility>
-        + Sub<In::Opacity, Output = In::Visibility>,
+        + PartialOrd
+        + Sub<In::Opacity, Output = Visibility>,
 {
     let ScanParams {
         mut min_gradient,
@@ -159,11 +175,7 @@ where
             break;
         };
 
-        let opacity = if let Some(opacity) = static_params.input_grid.get_opacity(coord) {
-            opacity
-        } else {
-            break;
-        };
+        let opacity = static_params.input_grid.get_opacity(coord);
 
         // check if cell is in visible range
         let between = coord - static_params.centre;
@@ -242,12 +254,13 @@ where
                 return Some(CornerInfo {
                     bitmap: direction_bitmap,
                     coord,
+                    visibility,
                 });
             }
         }
 
         if in_range && octant.should_see(lateral_index) {
-            f(coord, direction_bitmap);
+            f(coord, direction_bitmap, visibility);
         }
 
         prev_visibility = cur_visibility;
@@ -279,28 +292,30 @@ impl<Visibility> ShadowcastContext<Visibility> {
         &mut self,
         octant_a: A,
         octant_b: B,
-        static_params: &StaticParams<In>,
+        static_params: &StaticParams<In, Visibility>,
         f: &mut F,
     ) where
-        F: FnMut(Coord, DirectionBitmap),
-        In: InputGrid<Visibility = Visibility>,
-        In::Visibility: Copy
-            + ::std::fmt::Debug
+        F: FnMut(Coord, DirectionBitmap, Visibility),
+        In: InputGrid,
+        Visibility: Copy
             + Zero
             + PartialOrd<In::Opacity>
-            + PartialOrd<In::Visibility>
-            + Sub<In::Opacity, Output = In::Visibility>,
+            + PartialOrd
+            + Sub<In::Opacity, Output = Visibility>,
         A: Octant,
         B: Octant,
     {
-        self.queue_a
-            .push(ScanParams::octant_base(In::initial_visibility()));
-        self.queue_b
-            .push(ScanParams::octant_base(In::initial_visibility()));
+        self.queue_a.push(ScanParams::octant_base(
+            static_params.initial_visibility,
+        ));
+        self.queue_b.push(ScanParams::octant_base(
+            static_params.initial_visibility,
+        ));
 
         loop {
             let mut corner_bitmap = DirectionBitmap::empty();
             let mut corner_coord = None;
+            let mut corner_visibility = Zero::zero();
 
             for params in self.queue_a.drain(..) {
                 if let Some(corner) = scan(
@@ -312,6 +327,9 @@ impl<Visibility> ShadowcastContext<Visibility> {
                 ) {
                     corner_bitmap |= corner.bitmap;
                     corner_coord = Some(corner.coord);
+                    if corner.visibility > corner_visibility {
+                        corner_visibility = corner.visibility;
+                    }
                 }
             }
 
@@ -325,6 +343,9 @@ impl<Visibility> ShadowcastContext<Visibility> {
                 ) {
                     corner_bitmap |= corner.bitmap;
                     corner_coord = Some(corner.coord);
+                    if corner.visibility > corner_visibility {
+                        corner_visibility = corner.visibility;
+                    }
                 }
             }
 
@@ -336,7 +357,7 @@ impl<Visibility> ShadowcastContext<Visibility> {
                     // the entire edge, just keep the edge.
                     corner_bitmap &= DirectionBitmap::all_cardinal();
                 }
-                f(corner_coord, corner_bitmap);
+                f(corner_coord, corner_bitmap, corner_visibility);
             }
 
             if self.queue_a_swap.is_empty() && self.queue_b_swap.is_empty() {
@@ -352,18 +373,18 @@ impl<Visibility> ShadowcastContext<Visibility> {
         coord: Coord,
         input_grid: &In,
         distance: u32,
+        initial_visibility: Visibility,
         mut f: F,
     ) where
-        In: InputGrid<Visibility = Visibility>,
-        In::Visibility: Copy
-            + ::std::fmt::Debug
+        In: InputGrid,
+        Visibility: Copy
             + Zero
             + PartialOrd<In::Opacity>
-            + PartialOrd<In::Visibility>
-            + Sub<In::Opacity, Output = In::Visibility>,
-        F: FnMut(Coord, DirectionBitmap),
+            + PartialOrd
+            + Sub<In::Opacity, Output = Visibility>,
+        F: FnMut(Coord, DirectionBitmap, Visibility),
     {
-        f(coord, DirectionBitmap::all());
+        f(coord, DirectionBitmap::all(), initial_visibility);
         let size = input_grid.size();
         let width = size.x() as i32;
         let height = size.y() as i32;
@@ -373,6 +394,7 @@ impl<Visibility> ShadowcastContext<Visibility> {
             input_grid,
             width,
             height,
+            initial_visibility,
         };
         self.observe_octant(TopLeft, LeftTop, &params, &mut f);
         self.observe_octant(
@@ -393,27 +415,5 @@ impl<Visibility> ShadowcastContext<Visibility> {
             &params,
             &mut f,
         );
-    }
-
-    pub fn observe<Out, In>(
-        &mut self,
-        coord: Coord,
-        input_grid: &In,
-        distance: u32,
-        time: u64,
-        output_grid: &mut Out,
-    ) where
-        Out: OutputGrid,
-        In: InputGrid<Visibility = Visibility>,
-        In::Visibility: Copy
-            + ::std::fmt::Debug
-            + Zero
-            + PartialOrd<In::Opacity>
-            + PartialOrd<In::Visibility>
-            + Sub<In::Opacity, Output = In::Visibility>,
-    {
-        self.for_each(coord, input_grid, distance, |coord, direction_map| {
-            output_grid.see(coord, direction_map, time);
-        });
     }
 }

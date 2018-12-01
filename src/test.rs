@@ -36,28 +36,13 @@ impl<T> Grid<T> {
 type TestInputGrid = Grid<u8>;
 type TestOutputGrid = Grid<Option<DirectionBitmap>>;
 
-impl OutputGrid for TestOutputGrid {
-    fn see(&mut self, coord: Coord, d: DirectionBitmap, _time: u64) {
-        if let Some(v) = self.get_mut(coord) {
-            if v.is_some() {
-                panic!("already have value at {:?}", coord);
-            }
-            *v = Some(d);
-        }
-    }
-}
-
 impl InputGrid for TestInputGrid {
     type Opacity = u8;
-    type Visibility = u8;
     fn size(&self) -> Size {
         self.size
     }
-    fn get_opacity(&self, coord: Coord) -> Option<Self::Opacity> {
-        self.get(coord).cloned()
-    }
-    fn initial_visibility() -> Self::Visibility {
-        255
+    fn get_opacity(&self, coord: Coord) -> Self::Opacity {
+        *self.get(coord).unwrap()
     }
 }
 
@@ -145,12 +130,35 @@ fn check_output(eye: Coord, output: &TestOutputGrid, expected_output_strings: &[
     }
 }
 
-fn check_scenario(input_strs: &[&str], expected_output: &[&str]) {
+fn check_scenario_with_distance(
+    distance: u32,
+    input_strs: &[&str],
+    expected_output: &[&str],
+) {
     let (input, eye) = input_from_strs(input_strs);
     let mut output = Grid::new_fn(input.size, |_| None);
     let mut ctx: ShadowcastContext<u8> = ShadowcastContext::new();
-    ctx.observe(eye, &input, 100, 1, &mut output);
+    ctx.for_each(
+        eye,
+        &input,
+        distance,
+        255,
+        |coord, direction_map, _visibility| {
+            if let Some(v) = output.get_mut(coord) {
+                if v.is_some() {
+                    panic!("already have value at {:?}", coord);
+                }
+                *v = Some(direction_map);
+            } else {
+                panic!("access out of bounds {:?}", coord);
+            }
+        },
+    );
     check_output(eye, &output, expected_output);
+}
+
+fn check_scenario(input_strs: &[&str], expected_output: &[&str]) {
+    check_scenario_with_distance(100, input_strs, expected_output);
 }
 
 #[test]
