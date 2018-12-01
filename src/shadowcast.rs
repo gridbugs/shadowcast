@@ -226,6 +226,7 @@ where
             / (max_gradient.depth * 2)
     };
 
+    // prevent scanning off the edge of the octant
     let lateral_max = cmp::min(lateral_max, octant.lateral_max(static_params.centre));
 
     let mut prev_visibility = Zero::zero();
@@ -464,14 +465,14 @@ impl<Visibility> ShadowcastContext<Visibility> {
         };
         self.observe_octant(TopLeft, LeftTop, &params, &mut f);
         self.observe_octant(
-            TopRight { width },
             RightTop { width },
+            TopRight { width },
             &params,
             &mut f,
         );
         self.observe_octant(
-            BottomLeft { height },
             LeftBottom { height },
+            BottomLeft { height },
             &params,
             &mut f,
         );
