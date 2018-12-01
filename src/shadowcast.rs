@@ -102,42 +102,46 @@ where
     let effective_gradient_depth = mid_gradient_depth;
 
     let lateral_min = {
-        // We're interested in the width in half-cells of the right triangle which is similar to
-        // min_gradient, and whose depth is effective_gradient_depth. Since the eye is in the centre of a
-        // cell, the lateral min index will be half of (this width + 1).
-        // It's incremented to account for the eye being in the centre of its cell (ie. 1 half-cell
-        // to the right of the left edge of the cell.
-        // It's halved because the computed width will be in half-cells.
+        // We're interested in the width in half-cells of the right triangle which is
+        // similar to min_gradient, and whose depth is effective_gradient_depth. Since the
+        // eye is in the centre of a cell, the lateral min index will be half of (this
+        // width + 1).  It's incremented to account for the eye being in the centre of its
+        // cell (ie. 1 half-cell to the right of the left edge of the cell.  It's halved
+        // because the computed width will be in half-cells.
         //
         // Similar triangles:
-        // width_half_cells / effective_gradient_depth = min_gradient.lateral / min_gradient.depth
+        // width_half_cells / effective_gradient_depth =
+        // min_gradient.lateral / min_gradient.depth
         //
         // Thus:
-        // width_half_cells = (min_gradient.lateral * effective_gradient_depth) / min_gradient.depth
+        // width_half_cells = (min_gradient.lateral * effective_gradient_depth) /
+        //                    min_gradient.depth
         //
         // Since the eye is in the centre of a cell:
         // offset_half_cells = 1 + width_half_cells
-        //                   = 1 + ((min_gradient.lateral * effective_gradient_depth) / min_gradient.depth)
-        //                   = (min_gradient_depth + (min_gradient.lateral * effectivte_gradient_depth)) /
-        //                     min_gradient.depth
+        //                   = 1 + ((min_gradient.lateral * effective_gradient_depth) /
+        //                         min_gradient.depth)
+        //                   = (min_gradient_depth + (min_gradient.lateral *
+        //                      effectivte_gradient_depth)) / min_gradient.depth
         //
         // So the offset in cells is:
         // offset_cells = offset_half_cells / 2
-        //              = (min_gradient_depth + (min_gradient.lateral * effective_gradient_depth)) /
+        //              = (min_gradient_depth +
+        //                      (min_gradient.lateral * effective_gradient_depth)) /
         //                (min_gradient.depth * 2)
         //
-        // Finally, if this section is not min_inclusive, we skip the first index, increment
-        // the result by 1.
+        // Finally, if this section is not min_inclusive, we skip the first index,
+        // increment the result by 1.
         ((min_gradient.depth + (min_gradient.lateral * effective_gradient_depth))
             / (min_gradient.depth * 2)) + ((!min_inclusive) as i32)
     };
 
     let lateral_max = {
-        // This computation is much the same as for lateral_min above. Notable differences:
-        // - subtract 1 before dividing, to make sure that if the strip ends exactly on a left
-        //   corner of a cell, that cell is not included in the scanned range
-        // - there is no max_inclusive analog of min_inclusive. All ranges are effectively
-        //   max inclusive, so there is no need to change the result accordingly
+        // This computation is much the same as for lateral_min above. Notable
+        // differences: - subtract 1 before dividing, to make sure that if the strip ends
+        // exactly on a left corner of a cell, that cell is not included in the scanned
+        // range - there is no max_inclusive analog of min_inclusive. All ranges are
+        // effectively max inclusive, so there is no need to change the result accordingly
         (max_gradient.depth + (max_gradient.lateral * effective_gradient_depth) - 1)
             / (max_gradient.depth * 2)
     };
