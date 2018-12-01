@@ -22,6 +22,69 @@ pub trait InputGrid {
     fn get_opacity(&self, coord: Coord) -> Self::Opacity;
 }
 
+pub trait VisionDistance {
+    fn in_range(&self, delta: Coord) -> bool;
+}
+
+pub mod vision_distance {
+    use super::VisionDistance;
+    use coord_2d::Coord;
+    use std::cmp;
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct Circle {
+        distance_squared: u32,
+    }
+
+    impl Circle {
+        pub fn new(distance: u32) -> Self {
+            Self {
+                distance_squared: distance * distance,
+            }
+        }
+    }
+
+    impl VisionDistance for Circle {
+        fn in_range(&self, delta: Coord) -> bool {
+            ((delta.x * delta.x + delta.y * delta.y) as u32) <= self.distance_squared
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct Square {
+        distance: u32,
+    }
+
+    impl Square {
+        pub fn new(distance: u32) -> Self {
+            Self { distance }
+        }
+    }
+
+    impl VisionDistance for Square {
+        fn in_range(&self, delta: Coord) -> bool {
+            cmp::max(delta.x.abs(), delta.y.abs()) as u32 <= self.distance
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct Diamond {
+        distance: u32,
+    }
+
+    impl Diamond {
+        pub fn new(distance: u32) -> Self {
+            Self { distance }
+        }
+    }
+
+    impl VisionDistance for Diamond {
+        fn in_range(&self, delta: Coord) -> bool {
+            ((delta.x.abs() + delta.y.abs()) as u32) <= self.distance
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Gradient {
     lateral: i32,
@@ -40,9 +103,9 @@ impl Gradient {
     }
 }
 
-struct StaticParams<'a, In: 'a + InputGrid, Visibility> {
+struct StaticParams<'a, In: 'a + InputGrid, Visibility, VisDist> {
     centre: Coord,
-    vision_distance_squared: i32,
+    vision_distance: VisDist,
     input_grid: &'a In,
     width: i32,
     height: i32,
@@ -76,15 +139,14 @@ struct CornerInfo<Visibility> {
     visibility: Visibility,
 }
 
-fn scan<In, Visibility, O, F>(
+fn scan<In, Visibility, O, VisDist, F>(
     octant: &O,
     next: &mut Vec<ScanParams<Visibility>>,
     params: ScanParams<Visibility>,
-    static_params: &StaticParams<In, Visibility>,
+    static_params: &StaticParams<In, Visibility, VisDist>,
     f: &mut F,
 ) -> Option<CornerInfo<Visibility>>
 where
-    F: FnMut(Coord, DirectionBitmap, Visibility),
     In: InputGrid,
     O: Octant,
     Visibility: Copy
@@ -92,6 +154,8 @@ where
         + PartialOrd<In::Opacity>
         + PartialOrd
         + Sub<In::Opacity, Output = Visibility>,
+    VisDist: VisionDistance,
+    F: FnMut(Coord, DirectionBitmap, Visibility),
 {
     let ScanParams {
         mut min_gradient,
@@ -178,9 +242,9 @@ where
         let opacity = static_params.input_grid.get_opacity(coord);
 
         // check if cell is in visible range
-        let between = coord - static_params.centre;
-        let distance_squared = between.x * between.x + between.y * between.y;
-        let in_range = distance_squared < static_params.vision_distance_squared;
+        let in_range = static_params
+            .vision_distance
+            .in_range(coord - static_params.centre);
 
         let gradient_lateral = lateral_index * 2 - 1;
         let mut direction_bitmap = DirectionBitmap::empty();
@@ -201,7 +265,7 @@ where
                 front_gradient_depth
             };
             let gradient = Gradient::new(gradient_lateral, gradient_depth);
-            if !prev_opaque && in_range {
+            if !prev_opaque {
                 // see beyond the previous section unless it's opaque
                 next.push(ScanParams {
                     min_gradient,
@@ -235,7 +299,7 @@ where
 
         // handle final cell
         if lateral_index == lateral_max {
-            if !cur_opaque && in_range && min_gradient != max_gradient {
+            if !cur_opaque && min_gradient != max_gradient {
                 // see beyond the current section
                 next.push(ScanParams {
                     min_gradient,
@@ -288,14 +352,13 @@ impl<Visibility> ShadowcastContext<Visibility> {
         }
     }
 
-    fn observe_octant<In, A, B, F>(
+    fn observe_octant<In, A, B, VisDist, F>(
         &mut self,
         octant_a: A,
         octant_b: B,
-        static_params: &StaticParams<In, Visibility>,
+        static_params: &StaticParams<In, Visibility, VisDist>,
         f: &mut F,
     ) where
-        F: FnMut(Coord, DirectionBitmap, Visibility),
         In: InputGrid,
         Visibility: Copy
             + Zero
@@ -304,6 +367,8 @@ impl<Visibility> ShadowcastContext<Visibility> {
             + Sub<In::Opacity, Output = Visibility>,
         A: Octant,
         B: Octant,
+        VisDist: VisionDistance,
+        F: FnMut(Coord, DirectionBitmap, Visibility),
     {
         self.queue_a.push(ScanParams::octant_base(
             static_params.initial_visibility,
@@ -368,11 +433,11 @@ impl<Visibility> ShadowcastContext<Visibility> {
         }
     }
 
-    pub fn for_each<F, In>(
+    pub fn for_each<F, In, VisDist>(
         &mut self,
         coord: Coord,
         input_grid: &In,
-        distance: u32,
+        vision_distance: VisDist,
         initial_visibility: Visibility,
         mut f: F,
     ) where
@@ -382,6 +447,7 @@ impl<Visibility> ShadowcastContext<Visibility> {
             + PartialOrd<In::Opacity>
             + PartialOrd
             + Sub<In::Opacity, Output = Visibility>,
+        VisDist: VisionDistance,
         F: FnMut(Coord, DirectionBitmap, Visibility),
     {
         f(coord, DirectionBitmap::all(), initial_visibility);
@@ -390,7 +456,7 @@ impl<Visibility> ShadowcastContext<Visibility> {
         let height = size.y() as i32;
         let params = StaticParams {
             centre: coord,
-            vision_distance_squared: (distance * distance) as i32,
+            vision_distance,
             input_grid,
             width,
             height,
