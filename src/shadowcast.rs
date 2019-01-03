@@ -14,8 +14,7 @@ pub trait InputGrid {
     /// Returns the size of the grid in cells.
     fn size(&self) -> Size;
 
-    /// Returns the opacity at a given coordinate, or None if the coordinate
-    /// is out of the bounds of the grid. This method is allowed to panic if
+    /// Returns the opacity at a given coordinate. This method may panic
     /// the coord lies out of the bounds described by `size`. The contract
     /// implemented by `ShadowcastContext::for_each` includes not calling
     /// this with an out-of-bounds coordinate.
@@ -213,7 +212,8 @@ where
         // Finally, if this section is not min_inclusive, we skip the first index,
         // increment the result by 1.
         ((min_gradient.depth + (min_gradient.lateral * effective_gradient_depth))
-            / (min_gradient.depth * 2)) + ((!min_inclusive) as i32)
+            / (min_gradient.depth * 2))
+            + ((!min_inclusive) as i32)
     };
 
     let lateral_max = {
@@ -234,7 +234,9 @@ where
 
     for lateral_index in lateral_min..(lateral_max + 1) {
         let coord = octant.make_coord(static_params.centre, lateral_index, depth_index);
-        if coord.x < 0 || coord.x >= static_params.width || coord.y < 0
+        if coord.x < 0
+            || coord.x >= static_params.width
+            || coord.y < 0
             || coord.y >= static_params.height
         {
             break;
@@ -371,12 +373,10 @@ impl<Visibility> ShadowcastContext<Visibility> {
         VisDist: VisionDistance,
         F: FnMut(Coord, DirectionBitmap, Visibility),
     {
-        self.queue_a.push(ScanParams::octant_base(
-            static_params.initial_visibility,
-        ));
-        self.queue_b.push(ScanParams::octant_base(
-            static_params.initial_visibility,
-        ));
+        self.queue_a
+            .push(ScanParams::octant_base(static_params.initial_visibility));
+        self.queue_b
+            .push(ScanParams::octant_base(static_params.initial_visibility));
 
         loop {
             let mut corner_bitmap = DirectionBitmap::empty();
@@ -384,13 +384,9 @@ impl<Visibility> ShadowcastContext<Visibility> {
             let mut corner_visibility = Zero::zero();
 
             for params in self.queue_a.drain(..) {
-                if let Some(corner) = scan(
-                    &octant_a,
-                    &mut self.queue_a_swap,
-                    params,
-                    static_params,
-                    f,
-                ) {
+                if let Some(corner) =
+                    scan(&octant_a, &mut self.queue_a_swap, params, static_params, f)
+                {
                     corner_bitmap |= corner.bitmap;
                     corner_coord = Some(corner.coord);
                     if corner.visibility > corner_visibility {
@@ -400,13 +396,9 @@ impl<Visibility> ShadowcastContext<Visibility> {
             }
 
             for params in self.queue_b.drain(..) {
-                if let Some(corner) = scan(
-                    &octant_b,
-                    &mut self.queue_b_swap,
-                    params,
-                    static_params,
-                    f,
-                ) {
+                if let Some(corner) =
+                    scan(&octant_b, &mut self.queue_b_swap, params, static_params, f)
+                {
                     corner_bitmap |= corner.bitmap;
                     corner_coord = Some(corner.coord);
                     if corner.visibility > corner_visibility {
@@ -464,12 +456,7 @@ impl<Visibility> ShadowcastContext<Visibility> {
             initial_visibility,
         };
         self.observe_octant(TopLeft, LeftTop, &params, &mut f);
-        self.observe_octant(
-            RightTop { width },
-            TopRight { width },
-            &params,
-            &mut f,
-        );
+        self.observe_octant(RightTop { width }, TopRight { width }, &params, &mut f);
         self.observe_octant(
             LeftBottom { height },
             BottomLeft { height },
