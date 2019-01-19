@@ -6,6 +6,6 @@ matrix:
       script:
         - cargo test
     - rust: stable
-      env: DESCRIPTION="benchmarks"
+      env: DESCRIPTION="test that benchmarks compile"
       script:
-        - cargo bench
+        - cargo bench --no-run
