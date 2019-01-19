@@ -239,7 +239,7 @@ impl<Cell: VisionCell + Clone> Benchmark<Cell> {
         }
     }
 }
-
+aeu
 type CharGrid = &'static [&'static str];
 
 fn make_benchmarks(area: CharGrid, vision_distance: u32, name: &str, c: &mut Criterion) {
