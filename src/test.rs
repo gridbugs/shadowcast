@@ -28,25 +28,25 @@ impl<T> Grid<T> {
         self.index(coord).map(|index| &self.cells[index])
     }
     fn get_mut(&mut self, coord: Coord) -> Option<&mut T> {
-        self.index(coord)
-            .map(move |index| &mut self.cells[index])
+        self.index(coord).map(move |index| &mut self.cells[index])
     }
 }
 
-type TestInputGrid = Grid<u8>;
 type TestOutputGrid = Grid<Option<DirectionBitmap>>;
 
+struct TestInputGrid;
 impl InputGrid for TestInputGrid {
+    type Grid = Grid<u8>;
     type Opacity = u8;
-    fn size(&self) -> Size {
-        self.size
+    fn size(&self, grid: &Self::Grid) -> Size {
+        grid.size
     }
-    fn get_opacity(&self, coord: Coord) -> Self::Opacity {
-        *self.get(coord).unwrap()
+    fn get_opacity(&self, grid: &Self::Grid, coord: Coord) -> Self::Opacity {
+        *grid.get(coord).unwrap()
     }
 }
 
-fn input_from_strs(strs: &[&str]) -> (TestInputGrid, Coord) {
+fn input_from_strs(strs: &[&str]) -> (Grid<u8>, Coord) {
     let size = Size::new(strs[0].len() as u32, strs.len() as u32);
     let mut grid = Grid::new_fn(size, |_| 0);
     let mut eye = None;
@@ -138,8 +138,9 @@ fn check_scenario_with_vision_distance<VD: VisionDistance>(
     let (input, eye) = input_from_strs(input_strs);
     let mut output = Grid::new_fn(input.size, |_| None);
     let mut ctx: ShadowcastContext<u8> = ShadowcastContext::new();
-    ctx.for_each(
+    ctx.for_each_visible(
         eye,
+        &TestInputGrid,
         &input,
         vision_distance,
         255,

@@ -7,18 +7,10 @@ use std::mem;
 use std::ops::Sub;
 
 pub trait InputGrid {
-    /// Representation of the opacity of a cell in the grid.
-    /// This will usually be a numeric type.
+    type Grid;
     type Opacity;
-
-    /// Returns the size of the grid in cells.
-    fn size(&self) -> Size;
-
-    /// Returns the opacity at a given coordinate. This method may panic
-    /// the coord lies out of the bounds described by `size`. The contract
-    /// implemented by `ShadowcastContext::for_each` includes not calling
-    /// this with an out-of-bounds coordinate.
-    fn get_opacity(&self, coord: Coord) -> Self::Opacity;
+    fn size(&self, grid: &Self::Grid) -> Size;
+    fn get_opacity(&self, grid: &Self::Grid, coord: Coord) -> Self::Opacity;
 }
 
 pub trait VisionDistance {
@@ -102,13 +94,20 @@ impl Gradient {
     }
 }
 
-struct StaticParams<'a, In: 'a + InputGrid, Visibility, VisDist> {
+struct StaticParams<'a, I: 'a + InputGrid, Visibility, VisDist> {
     centre: Coord,
     vision_distance: VisDist,
-    input_grid: &'a In,
+    input_grid: &'a I,
+    grid: &'a I::Grid,
     width: i32,
     height: i32,
     initial_visibility: Visibility,
+}
+
+impl<'a, I: InputGrid, Visibility, VisDist> StaticParams<'a, I, Visibility, VisDist> {
+    fn get_opacity(&self, coord: Coord) -> I::Opacity {
+        self.input_grid.get_opacity(&self.grid, coord)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -138,21 +137,21 @@ struct CornerInfo<Visibility> {
     visibility: Visibility,
 }
 
-fn scan<In, Visibility, O, VisDist, F>(
+fn scan<I, Visibility, O, VisDist, F>(
     octant: &O,
     next: &mut Vec<ScanParams<Visibility>>,
     params: ScanParams<Visibility>,
-    static_params: &StaticParams<In, Visibility, VisDist>,
+    static_params: &StaticParams<I, Visibility, VisDist>,
     f: &mut F,
 ) -> Option<CornerInfo<Visibility>>
 where
-    In: InputGrid,
+    I: InputGrid,
     O: Octant,
     Visibility: Copy
         + Zero
-        + PartialOrd<In::Opacity>
+        + PartialOrd<I::Opacity>
         + PartialOrd
-        + Sub<In::Opacity, Output = Visibility>,
+        + Sub<I::Opacity, Output = Visibility>,
     VisDist: VisionDistance,
     F: FnMut(Coord, DirectionBitmap, Visibility),
 {
@@ -242,7 +241,7 @@ where
             break;
         };
 
-        let opacity = static_params.input_grid.get_opacity(coord);
+        let opacity = static_params.get_opacity(coord);
 
         // check if cell is in visible range
         let in_range = static_params
@@ -355,19 +354,19 @@ impl<Visibility> ShadowcastContext<Visibility> {
         }
     }
 
-    fn observe_octant<In, A, B, VisDist, F>(
+    fn observe_octant<I, A, B, VisDist, F>(
         &mut self,
         octant_a: A,
         octant_b: B,
-        static_params: &StaticParams<In, Visibility, VisDist>,
+        static_params: &StaticParams<I, Visibility, VisDist>,
         f: &mut F,
     ) where
-        In: InputGrid,
+        I: InputGrid,
         Visibility: Copy
             + Zero
-            + PartialOrd<In::Opacity>
+            + PartialOrd<I::Opacity>
             + PartialOrd
-            + Sub<In::Opacity, Output = Visibility>,
+            + Sub<I::Opacity, Output = Visibility>,
         A: Octant,
         B: Octant,
         VisDist: VisionDistance,
@@ -426,31 +425,33 @@ impl<Visibility> ShadowcastContext<Visibility> {
         }
     }
 
-    pub fn for_each<F, In, VisDist>(
+    pub fn for_each_visible<I, V, F>(
         &mut self,
         coord: Coord,
-        input_grid: &In,
-        vision_distance: VisDist,
+        input_grid: &I,
+        grid: &I::Grid,
+        vision_distance: V,
         initial_visibility: Visibility,
         mut f: F,
     ) where
-        In: InputGrid,
+        I: InputGrid,
+        V: VisionDistance,
+        F: FnMut(Coord, DirectionBitmap, Visibility),
         Visibility: Copy
             + Zero
-            + PartialOrd<In::Opacity>
+            + PartialOrd<I::Opacity>
             + PartialOrd
-            + Sub<In::Opacity, Output = Visibility>,
-        VisDist: VisionDistance,
-        F: FnMut(Coord, DirectionBitmap, Visibility),
+            + Sub<I::Opacity, Output = Visibility>,
     {
         f(coord, DirectionBitmap::all(), initial_visibility);
-        let size = input_grid.size();
+        let size = input_grid.size(grid);
         let width = size.x() as i32;
         let height = size.y() as i32;
-        let params = StaticParams {
+        let params: StaticParams<I, _, _> = StaticParams {
             centre: coord,
             vision_distance,
             input_grid,
+            grid,
             width,
             height,
             initial_visibility,

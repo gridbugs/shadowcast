@@ -1,0 +1,11 @@
+language: rust
+matrix:
+  include:
+    - rust: stable
+      env: DESCRIPTION="tests"
+      script:
+        - cargo test
+    - rust: stable
+      env: DESCRIPTION="benchmarks"
+      script:
+        - cargo bench
