@@ -443,8 +443,10 @@ impl<Visibility> ShadowcastContext<Visibility> {
             + PartialOrd
             + Sub<I::Opacity, Output = Visibility>,
     {
-        f(coord, DirectionBitmap::all(), initial_visibility);
         let size = input_grid.size(grid);
+        if coord.is_valid(size) {
+            f(coord, DirectionBitmap::all(), initial_visibility);
+        }
         let width = size.x() as i32;
         let height = size.y() as i32;
         let params: StaticParams<I, _, _> = StaticParams {
