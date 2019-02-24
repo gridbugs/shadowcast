@@ -336,7 +336,7 @@ where
     None
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ShadowcastContext<Visibility> {
     queue_a: Vec<ScanParams<Visibility>>,
     queue_a_swap: Vec<ScanParams<Visibility>>,
