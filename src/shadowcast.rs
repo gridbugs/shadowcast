@@ -22,6 +22,7 @@ pub mod vision_distance {
     use coord_2d::Coord;
     use std::cmp;
 
+    #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
     #[derive(Debug, Clone, Copy)]
     pub struct Circle {
         distance_squared: u32,
@@ -41,6 +42,7 @@ pub mod vision_distance {
         }
     }
 
+    #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
     #[derive(Debug, Clone, Copy)]
     pub struct Square {
         distance: u32,
@@ -58,6 +60,7 @@ pub mod vision_distance {
         }
     }
 
+    #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
     #[derive(Debug, Clone, Copy)]
     pub struct Diamond {
         distance: u32,

@@ -10,12 +10,13 @@ homepage = "https://github.com/stevebob/shadowcast.git"
 readme = "README.md"
 
 [features]
-serialize = ["direction/serialize", "coord_2d/serialize"]
+serialize = ["serde", "direction/serialize", "coord_2d/serialize"]
 
 [dependencies]
 direction = "0.17"
 coord_2d = "0.2"
 num-traits = { version = "0.2", default-features = false }
+serde = { version = "1.0", features = ["serde_derive"], optional = true }
 
 [dev-dependencies]
 criterion = "0.2"
