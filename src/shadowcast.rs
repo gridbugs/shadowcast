@@ -29,10 +29,11 @@ pub mod vision_distance {
     }
 
     impl Circle {
+        pub const fn new_squared(distance_squared: u32) -> Self {
+            Self { distance_squared }
+        }
         pub const fn new(distance: u32) -> Self {
-            Self {
-                distance_squared: distance * distance,
-            }
+            Self::new_squared(distance * distance)
         }
     }
 
