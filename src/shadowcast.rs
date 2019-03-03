@@ -35,6 +35,9 @@ pub mod vision_distance {
         pub const fn new(distance: u32) -> Self {
             Self::new_squared(distance * distance)
         }
+        pub const fn distance_squared(&self) -> u32 {
+            self.distance_squared
+        }
     }
 
     impl VisionDistance for Circle {
@@ -53,6 +56,9 @@ pub mod vision_distance {
         pub const fn new(distance: u32) -> Self {
             Self { distance }
         }
+        pub const fn distance(&self) -> u32 {
+            self.distance
+        }
     }
 
     impl VisionDistance for Square {
@@ -70,6 +76,9 @@ pub mod vision_distance {
     impl Diamond {
         pub const fn new(distance: u32) -> Self {
             Self { distance }
+        }
+        pub const fn distance(&self) -> u32 {
+            self.distance
         }
     }
 
