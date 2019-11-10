@@ -20,7 +20,7 @@ serde = { version = "1.0", features = ["serde_derive"], optional = true }
 
 [dev-dependencies]
 criterion = "0.2"
-grid_2d = "0.13"
+grid_2d = "0.14"
 
 [[bench]]
 name = "cell_size"
