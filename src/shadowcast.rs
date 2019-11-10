@@ -13,8 +13,8 @@ pub trait InputGrid {
     fn get_opacity(&self, grid: &Self::Grid, coord: Coord) -> Self::Opacity;
 }
 
-pub trait VisionDistance {
-    fn in_range(&self, delta: Coord) -> bool;
+pub trait VisionDistance: Copy {
+    fn in_range(self, delta: Coord) -> bool;
 }
 
 pub mod vision_distance {
@@ -35,13 +35,13 @@ pub mod vision_distance {
         pub const fn new(distance: u32) -> Self {
             Self::new_squared(distance * distance)
         }
-        pub const fn distance_squared(&self) -> u32 {
+        pub const fn distance_squared(self) -> u32 {
             self.distance_squared
         }
     }
 
     impl VisionDistance for Circle {
-        fn in_range(&self, delta: Coord) -> bool {
+        fn in_range(self, delta: Coord) -> bool {
             ((delta.x * delta.x + delta.y * delta.y) as u32) <= self.distance_squared
         }
     }
@@ -56,13 +56,13 @@ pub mod vision_distance {
         pub const fn new(distance: u32) -> Self {
             Self { distance }
         }
-        pub const fn distance(&self) -> u32 {
+        pub const fn distance(self) -> u32 {
             self.distance
         }
     }
 
     impl VisionDistance for Square {
-        fn in_range(&self, delta: Coord) -> bool {
+        fn in_range(self, delta: Coord) -> bool {
             cmp::max(delta.x.abs(), delta.y.abs()) as u32 <= self.distance
         }
     }
@@ -77,13 +77,13 @@ pub mod vision_distance {
         pub const fn new(distance: u32) -> Self {
             Self { distance }
         }
-        pub const fn distance(&self) -> u32 {
+        pub const fn distance(self) -> u32 {
             self.distance
         }
     }
 
     impl VisionDistance for Diamond {
-        fn in_range(&self, delta: Coord) -> bool {
+        fn in_range(self, delta: Coord) -> bool {
             ((delta.x.abs() + delta.y.abs()) as u32) <= self.distance
         }
     }
@@ -244,7 +244,7 @@ where
     let mut prev_visibility = Zero::zero();
     let mut prev_opaque = false;
 
-    for lateral_index in lateral_min..(lateral_max + 1) {
+    for lateral_index in lateral_min..=lateral_max {
         let coord = octant.make_coord(static_params.centre, lateral_index, depth_index);
         if coord.x < 0
             || coord.x >= static_params.width
