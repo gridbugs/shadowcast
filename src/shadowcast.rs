@@ -1,5 +1,5 @@
 use coord_2d::{Coord, Size};
-use direction::DirectionBitmap;
+pub use direction::DirectionBitmap;
 use num_traits::Zero;
 use octants::*;
 use std::cmp;
