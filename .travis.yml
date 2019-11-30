@@ -6,7 +6,4 @@ matrix:
       env: DESCRIPTION="tests"
       script:
         - cargo test
-    - rust: stable
-      env: DESCRIPTION="test that benchmarks compile"
-      script:
-        - cargo bench --no-run
+        - cargo test --features=serialize

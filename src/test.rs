@@ -137,7 +137,7 @@ fn check_scenario_with_vision_distance<VD: VisionDistance>(
 ) {
     let (input, eye) = input_from_strs(input_strs);
     let mut output = Grid::new_fn(input.size, |_| None);
-    let mut ctx: ShadowcastContext<u8> = ShadowcastContext::new();
+    let mut ctx: Context<u8> = Context::default();
     ctx.for_each_visible(
         eye,
         &TestInputGrid,

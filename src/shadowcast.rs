@@ -1,7 +1,9 @@
+use crate::octants::*;
 use coord_2d::{Coord, Size};
 pub use direction::DirectionBitmap;
 use num_traits::Zero;
-use octants::*;
+#[cfg(feature = "serialize")]
+use serde::{Deserialize, Serialize};
 use std::cmp;
 use std::mem;
 use std::ops::Sub;
@@ -20,6 +22,8 @@ pub trait VisionDistance: Copy {
 pub mod vision_distance {
     use super::VisionDistance;
     use coord_2d::Coord;
+    #[cfg(feature = "serialize")]
+    use serde::{Deserialize, Serialize};
     use std::cmp;
 
     #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
@@ -329,7 +333,7 @@ where
                 // the scan, if it's along the diagonal between two octants.
                 // The result of both octant scans is required to determine the
                 // visibility of this cell. It is handled in
-                // ShadowcastContext::observe_octant.
+                // Context::observe_octant.
                 return Some(CornerInfo {
                     bitmap: direction_bitmap,
                     coord,
@@ -349,16 +353,16 @@ where
     None
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct ShadowcastContext<Visibility> {
+#[derive(Clone, Debug)]
+pub struct Context<Visibility> {
     queue_a: Vec<ScanParams<Visibility>>,
     queue_a_swap: Vec<ScanParams<Visibility>>,
     queue_b: Vec<ScanParams<Visibility>>,
     queue_b_swap: Vec<ScanParams<Visibility>>,
 }
 
-impl<Visibility> ShadowcastContext<Visibility> {
-    pub fn new() -> Self {
+impl<Visibility> Default for Context<Visibility> {
+    fn default() -> Self {
         Self {
             queue_a: Vec::new(),
             queue_a_swap: Vec::new(),
@@ -366,7 +370,24 @@ impl<Visibility> ShadowcastContext<Visibility> {
             queue_b_swap: Vec::new(),
         }
     }
+}
 
+#[cfg(feature = "serialize")]
+impl<Visibility> Serialize for Context<Visibility> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        ().serialize(s)
+    }
+}
+
+#[cfg(feature = "serialize")]
+impl<'a, Visibility> Deserialize<'a> for Context<Visibility> {
+    fn deserialize<D: serde::Deserializer<'a>>(d: D) -> Result<Self, D::Error> {
+        let () = Deserialize::deserialize(d)?;
+        Ok(Self::default())
+    }
+}
+
+impl<Visibility> Context<Visibility> {
     fn observe_octant<I, A, B, VisDist, F>(
         &mut self,
         octant_a: A,
