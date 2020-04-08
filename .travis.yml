@@ -1,9 +1,13 @@
 language: rust
 cache: cargo
-matrix:
-  include:
-    - rust: stable
-      env: DESCRIPTION="tests"
-      script:
-        - cargo test
-        - cargo test --features=serialize
+rust:
+  - stable
+  - beta
+  - nightly
+jobs:
+  allow_failures:
+    - rust: nightly
+  fast_finish: true
+script:
+  - cargo build --features=serialize
+  - cargo test
