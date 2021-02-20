@@ -11,6 +11,6 @@ jobs:
     - uses: hecrj/setup-rust-action@v1
       with:
         rust-version: ${{ matrix.rust }}
-      run: |
+    - run: |
         cargo build --features=serialize
         cargo test
