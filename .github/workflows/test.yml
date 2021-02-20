@@ -14,5 +14,5 @@ jobs:
     - run: |
         pwd
         pwd
-        ls ..
+        ls ../..
         cargo test
