@@ -2,6 +2,6 @@
 
 [![Version](https://img.shields.io/crates/v/shadowcast.svg)](https://crates.io/crates/shadowcast)
 [![Documentation](https://docs.rs/shadowcast/badge.svg)](https://docs.rs/shadowcast)
-[![Travis-CI Status](https://travis-ci.org/stevebob/shadowcast.svg?branch=master)](https://travis-ci.org/stevebob/shadowcast)
+[![Test](https://github.com/stevebob/shadowcast/actions/workflows/test.yml/badge.svg)](https://github.com/stevebob/shadowcast/actions/workflows/test.yml)
 
 Implementation of the recursive shadowcast visible-area detection algorithm
