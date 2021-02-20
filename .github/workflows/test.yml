@@ -11,8 +11,5 @@ jobs:
     - uses: hecrj/setup-rust-action@v1
       with:
         rust-version: ${{ matrix.rust }}
-    - run: |
-        pwd
-        pwd
-        ls ../..
-        cargo test
+    - uses: actions/checkout@master
+    - run: cargo test
