@@ -13,4 +13,5 @@ jobs:
         rust-version: ${{ matrix.rust }}
     - run: |
         pwd
+        ls
         cargo test
