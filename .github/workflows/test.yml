@@ -12,5 +12,5 @@ jobs:
       with:
         rust-version: ${{ matrix.rust }}
     - run: |
-        cargo build --features=serialize
+        pwd
         cargo test
