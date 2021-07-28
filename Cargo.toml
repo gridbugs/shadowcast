@@ -5,8 +5,8 @@ version = "0.8.0"
 authors = ["Stephen Sherratt <sfsherratt@gmail.com>"]
 license = "MIT"
 documentation = "https://docs.rs/shadowcast"
-repository = "https://github.com/stevebob/shadowcast.git"
-homepage = "https://github.com/stevebob/shadowcast.git"
+repository = "https://github.com/gridbugs/shadowcast.git"
+homepage = "https://github.com/gridbugs/shadowcast.git"
 readme = "README.md"
 edition = "2018"
 
