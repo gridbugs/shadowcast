@@ -8,7 +8,7 @@ documentation = "https://docs.rs/shadowcast"
 repository = "https://github.com/gridbugs/shadowcast.git"
 homepage = "https://github.com/gridbugs/shadowcast.git"
 readme = "README.md"
-edition = "2018"
+edition = "2021"
 
 [features]
 serialize = ["serde", "direction/serialize", "coord_2d/serialize"]
