@@ -1,5 +1,5 @@
 use crate::octants::*;
-use coord_2d::{Coord, Size};
+use coord_2d::{ICoord, UCoord};
 pub use direction::DirectionBitmap;
 use num_traits::Zero;
 #[cfg(feature = "serialize")]
@@ -11,17 +11,17 @@ use std::ops::Sub;
 pub trait InputGrid {
     type Grid;
     type Opacity;
-    fn size(&self, grid: &Self::Grid) -> Size;
-    fn get_opacity(&self, grid: &Self::Grid, coord: Coord) -> Self::Opacity;
+    fn size(&self, grid: &Self::Grid) -> UCoord;
+    fn get_opacity(&self, grid: &Self::Grid, coord: ICoord) -> Self::Opacity;
 }
 
 pub trait VisionDistance: Copy {
-    fn in_range(self, delta: Coord) -> bool;
+    fn in_range(self, delta: ICoord) -> bool;
 }
 
 pub mod vision_distance {
     use super::VisionDistance;
-    use coord_2d::Coord;
+    use coord_2d::ICoord;
     #[cfg(feature = "serialize")]
     use serde::{Deserialize, Serialize};
     use std::cmp;
@@ -45,7 +45,7 @@ pub mod vision_distance {
     }
 
     impl VisionDistance for Circle {
-        fn in_range(self, delta: Coord) -> bool {
+        fn in_range(self, delta: ICoord) -> bool {
             ((delta.x * delta.x + delta.y * delta.y) as u32) <= self.distance_squared
         }
     }
@@ -66,7 +66,7 @@ pub mod vision_distance {
     }
 
     impl VisionDistance for Square {
-        fn in_range(self, delta: Coord) -> bool {
+        fn in_range(self, delta: ICoord) -> bool {
             cmp::max(delta.x.abs(), delta.y.abs()) as u32 <= self.distance
         }
     }
@@ -87,7 +87,7 @@ pub mod vision_distance {
     }
 
     impl VisionDistance for Diamond {
-        fn in_range(self, delta: Coord) -> bool {
+        fn in_range(self, delta: ICoord) -> bool {
             ((delta.x.abs() + delta.y.abs()) as u32) <= self.distance
         }
     }
@@ -112,7 +112,7 @@ impl Gradient {
 }
 
 struct StaticParams<'a, I: 'a + InputGrid, Visibility, VisDist> {
-    centre: Coord,
+    centre: ICoord,
     vision_distance: VisDist,
     input_grid: &'a I,
     grid: &'a I::Grid,
@@ -122,8 +122,8 @@ struct StaticParams<'a, I: 'a + InputGrid, Visibility, VisDist> {
 }
 
 impl<'a, I: InputGrid, Visibility, VisDist> StaticParams<'a, I, Visibility, VisDist> {
-    fn get_opacity(&self, coord: Coord) -> I::Opacity {
-        self.input_grid.get_opacity(&self.grid, coord)
+    fn get_opacity(&self, coord: ICoord) -> I::Opacity {
+        self.input_grid.get_opacity(self.grid, coord)
     }
 }
 
@@ -150,7 +150,7 @@ impl<Visibility> ScanParams<Visibility> {
 
 struct CornerInfo<Visibility> {
     bitmap: DirectionBitmap,
-    coord: Coord,
+    coord: ICoord,
     visibility: Visibility,
 }
 
@@ -170,7 +170,7 @@ where
         + PartialOrd
         + Sub<I::Opacity, Output = Visibility>,
     VisDist: VisionDistance,
-    F: FnMut(Coord, DirectionBitmap, Visibility),
+    F: FnMut(ICoord, DirectionBitmap, Visibility),
 {
     let ScanParams {
         mut min_gradient,
@@ -181,12 +181,7 @@ where
     } = params;
 
     let depth_index =
-        if let Some(depth_index) = octant.depth_index(static_params.centre, depth) {
-            depth_index
-        } else {
-            // depth puts this strip out of bounds within the current octant
-            return None;
-        };
+        octant.depth_index(static_params.centre, depth)?;
 
     // the distance in half-cells between the centre of the row being scanned
     // and the centre of the eye
@@ -404,7 +399,7 @@ impl<Visibility> Context<Visibility> {
         A: Octant,
         B: Octant,
         VisDist: VisionDistance,
-        F: FnMut(Coord, DirectionBitmap, Visibility),
+        F: FnMut(ICoord, DirectionBitmap, Visibility),
     {
         self.queue_a
             .push(ScanParams::octant_base(static_params.initial_visibility));
@@ -461,7 +456,7 @@ impl<Visibility> Context<Visibility> {
 
     pub fn for_each_visible<I, V, F>(
         &mut self,
-        coord: Coord,
+        coord: ICoord,
         input_grid: &I,
         grid: &I::Grid,
         vision_distance: V,
@@ -470,7 +465,7 @@ impl<Visibility> Context<Visibility> {
     ) where
         I: InputGrid,
         V: VisionDistance,
-        F: FnMut(Coord, DirectionBitmap, Visibility),
+        F: FnMut(ICoord, DirectionBitmap, Visibility),
         Visibility: Copy
             + Zero
             + PartialOrd<I::Opacity>
@@ -481,8 +476,8 @@ impl<Visibility> Context<Visibility> {
         if coord.is_valid(size) {
             f(coord, DirectionBitmap::all(), initial_visibility);
         }
-        let width = size.x() as i32;
-        let height = size.y() as i32;
+        let width = size.width() as i32;
+        let height = size.height() as i32;
         let params: StaticParams<I, _, _> = StaticParams {
             centre: coord,
             vision_distance,

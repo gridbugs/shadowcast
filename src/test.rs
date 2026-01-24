@@ -1,33 +1,33 @@
 use super::*;
-use coord_2d::*;
+use coord_2d::{ICoord, UCoord};
 use direction::*;
 
 struct Grid<T> {
-    size: Size,
+    size: UCoord,
     cells: Vec<T>,
 }
 
 impl<T> Grid<T> {
-    fn new_fn<F: FnMut(Coord) -> T>(size: Size, mut f: F) -> Self {
+    fn new_fn<F: FnMut(ICoord) -> T>(size: UCoord, mut f: F) -> Self {
         let mut cells = Vec::with_capacity(size.count());
         for i in 0..size.height() {
             for j in 0..size.width() {
-                cells.push(f(Coord::new(j as i32, i as i32)));
+                cells.push(f(ICoord::new(j as i32, i as i32)));
             }
         }
         Self { size, cells }
     }
-    fn index(&self, coord: Coord) -> Option<usize> {
+    fn index(&self, coord: ICoord) -> Option<usize> {
         if coord.is_valid(self.size) {
             Some((coord.y as u32 * self.size.width() + coord.x as u32) as usize)
         } else {
             None
         }
     }
-    fn get(&self, coord: Coord) -> Option<&T> {
+    fn get(&self, coord: ICoord) -> Option<&T> {
         self.index(coord).map(|index| &self.cells[index])
     }
-    fn get_mut(&mut self, coord: Coord) -> Option<&mut T> {
+    fn get_mut(&mut self, coord: ICoord) -> Option<&mut T> {
         self.index(coord).map(move |index| &mut self.cells[index])
     }
 }
@@ -38,21 +38,21 @@ struct TestInputGrid;
 impl InputGrid for TestInputGrid {
     type Grid = Grid<u8>;
     type Opacity = u8;
-    fn size(&self, grid: &Self::Grid) -> Size {
+    fn size(&self, grid: &Self::Grid) -> UCoord {
         grid.size
     }
-    fn get_opacity(&self, grid: &Self::Grid, coord: Coord) -> Self::Opacity {
+    fn get_opacity(&self, grid: &Self::Grid, coord: ICoord) -> Self::Opacity {
         *grid.get(coord).unwrap()
     }
 }
 
-fn input_from_strs(strs: &[&str]) -> (Grid<u8>, Coord) {
-    let size = Size::new(strs[0].len() as u32, strs.len() as u32);
+fn input_from_strs(strs: &[&str]) -> (Grid<u8>, ICoord) {
+    let size = UCoord::new(strs[0].len() as u32, strs.len() as u32);
     let mut grid = Grid::new_fn(size, |_| 0);
     let mut eye = None;
     for (i, row) in strs.iter().enumerate() {
         for (j, ch) in row.chars().enumerate() {
-            let coord = Coord::new(j as i32, i as i32);
+            let coord = ICoord::new(j as i32, i as i32);
             let cell = match ch {
                 '@' => {
                     eye = Some(coord);
@@ -69,15 +69,15 @@ fn input_from_strs(strs: &[&str]) -> (Grid<u8>, Coord) {
     (grid, eye.expect("no eye"))
 }
 
-fn output_to_strings(eye: Coord, grid: &TestOutputGrid) -> Vec<String> {
+fn output_to_strings(eye: ICoord, grid: &TestOutputGrid) -> Vec<String> {
     let mut strings = Vec::new();
     for i in 0..grid.size.height() {
         let mut string = String::new();
         for j in 0..grid.size.width() {
-            let coord = Coord::new(j as i32, i as i32);
+            let coord = ICoord::new(j as i32, i as i32);
             let ch = if coord == eye {
                 '@'
-            } else if let Some(ref directions) = grid.get(coord).unwrap() {
+            } else if let Some(directions) = grid.get(coord).unwrap() {
                 use self::Direction::*;
                 let directions = *directions;
                 if directions == DirectionBitmap::all() {
@@ -120,7 +120,7 @@ fn output_to_strings(eye: Coord, grid: &TestOutputGrid) -> Vec<String> {
     strings
 }
 
-fn check_output(eye: Coord, output: &TestOutputGrid, expected_output_strings: &[&str]) {
+fn check_output(eye: ICoord, output: &TestOutputGrid, expected_output_strings: &[&str]) {
     let output_strings = output_to_strings(eye, output);
     if output_strings != expected_output_strings {
         panic!(

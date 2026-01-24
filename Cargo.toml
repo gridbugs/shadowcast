@@ -1,23 +1,23 @@
 [package]
 name = "shadowcast"
 description = "Implementation of the recursive shadowcast visible-area detection algorithm"
-version = "0.8.1"
+version = "0.9.0"
 authors = ["Stephen Sherratt <sfsherratt@gmail.com>"]
 license = "MIT"
 documentation = "https://docs.rs/shadowcast"
 repository = "https://github.com/gridbugs/shadowcast.git"
 homepage = "https://github.com/gridbugs/shadowcast.git"
 readme = "README.md"
-edition = "2021"
+edition = "2024"
 
 [features]
 serialize = ["serde", "direction/serialize", "coord_2d/serialize"]
 
 [dependencies]
-direction = "0.18"
-coord_2d = "0.3"
+direction = "0.19"
+coord_2d = "0.4"
 num-traits = { version = "0.2", default-features = false }
-serde = { version = "1.0", features = ["serde_derive"], optional = true }
+serde = { version = "1", features = ["serde_derive"], optional = true }
 
 [dev-dependencies]
-grid_2d = "0.15"
+grid_2d = "0.16"
